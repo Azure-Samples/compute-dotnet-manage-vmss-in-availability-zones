@@ -23,7 +23,8 @@ namespace ManageZonalVirtualMachineScaleSet
          *  - Create a zone resilient load balancer with
          *         - the existing zone resilient ip address
          *         - two load balancing rule which is applied to two different backend pools
-         *  - Create two zone aware virtual machine scale set each associated with one backend pool
+         *  - Create two zone redundant virtual machine scale set each associated with one backend pool
+         *  - Update the virtual machine scale set by appending new zone.
          */
         public static void RunSample(IAzure azure)
         {
@@ -145,9 +146,9 @@ namespace ManageZonalVirtualMachineScaleSet
                 Utilities.Log("Created network for virtual machine scale sets");
 
                 //=============================================================
-                // Create a zone aware virtual machine scale set
+                // Create a zone redundant virtual machine scale set
 
-                Utilities.Log("Creating a zone aware virtual machine scale set");
+                Utilities.Log("Creating a zone redundant virtual machine scale set");
 
                 // HTTP goes to this virtual machine scale set
                 //
@@ -165,14 +166,15 @@ namespace ManageZonalVirtualMachineScaleSet
                             .WithRootUsername(userName)
                             .WithRootPassword(password)
                             .WithAvailabilityZone(AvailabilityZoneId.Zone_1)
+                            .WithAvailabilityZone(AvailabilityZoneId.Zone_2)
                             .Create();
 
-                Utilities.Log("Created first zone aware virtual machine scale set");
+                Utilities.Log("Created first zone redundant virtual machine scale set");
 
                 //=============================================================
-                // Create a zone aware virtual machine scale set
+                // Create a zone redundant virtual machine scale set
 
-                Utilities.Log("Creating second zone aware virtual machine scale set");
+                Utilities.Log("Creating second zone redundant virtual machine scale set");
 
                 // HTTPS goes to this virtual machine scale set
                 //
@@ -190,9 +192,10 @@ namespace ManageZonalVirtualMachineScaleSet
                             .WithRootUsername(userName)
                             .WithRootPassword(password)
                             .WithAvailabilityZone(AvailabilityZoneId.Zone_1)
+                            .WithAvailabilityZone(AvailabilityZoneId.Zone_2)
                             .Create();
 
-                Utilities.Log("Created second zone aware virtual machine scale set");
+                Utilities.Log("Created second zone redundant virtual machine scale set");
             }
             finally
             {

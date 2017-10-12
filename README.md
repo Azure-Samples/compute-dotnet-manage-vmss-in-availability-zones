@@ -11,7 +11,8 @@ author: anuchandy
            - Create a zone resilient load balancer with
                   - the existing zone resilient ip address
                   - two load balancing rule which is applied to two different backend pools
-           - Create two zone aware virtual machine scale set each associated with one backend pool
+           - Create two zone redundant virtual machine scale set each associated with one backend pool
+           - Update the virtual machine scale set by appending new zone.
 
 
 ## Running this Sample ##
