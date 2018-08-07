@@ -1,10 +1,10 @@
 ---
 services: Compute
-platforms: .Net
+platforms: dotnet
 author: anuchandy
 ---
 
-# Getting Started with Compute - Manage Zonal Virtual Machine Scale Set - in .Net #
+# Manage virtual machine scale sets in availability zones #
 
           Azure Compute sample for managing virtual machine scale set -
            - Create a zone resilient public ip address
@@ -19,7 +19,7 @@ author: anuchandy
 
 To run this sample:
 
-Set the environment variable `AZURE_AUTH_LOCATION` with the full path for an auth file. See [how to create an auth file](https://github.com/Azure/azure-sdk-for-net/blob/Fluent/AUTH.md).
+Set the environment variable `AZURE_AUTH_LOCATION` with the full path for an auth file. See [how to create an auth file](https://github.com/Azure/azure-libraries-for-java/blob/master/AUTH.md).
 
     git clone https://github.com/Azure-Samples/compute-dotnet-manage-vmss-in-availability-zones.git
 
