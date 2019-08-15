@@ -4,20 +4,20 @@ languages:
 - csharp
 products:
 - azure
-services: Compute
-platforms: dotnet
-author: yaohaizh
+extensions:
+- services: Compute
+- platforms: dotnet
 ---
 
 # Manage virtual machine scale sets in availability zones #
 
-          Azure Compute sample for managing virtual machine scale set -
-           - Create a zone resilient public ip address
-           - Create a zone resilient load balancer with
-                  - the existing zone resilient ip address
-                  - two load balancing rule which is applied to two different backend pools
-           - Create two zone redundant virtual machine scale set each associated with one backend pool
-           - Update the virtual machine scale set by appending new zone.
+ Azure Compute sample for managing virtual machine scale set -
+  - Create a zone resilient public ip address
+  - Create a zone resilient load balancer with
+         - the existing zone resilient ip address
+         - two load balancing rule which is applied to two different backend pools
+  - Create two zone redundant virtual machine scale set each associated with one backend pool
+  - Update the virtual machine scale set by appending new zone.
 
 
 ## Running this Sample ##
