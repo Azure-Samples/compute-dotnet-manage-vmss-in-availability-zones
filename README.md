@@ -5,8 +5,8 @@ languages:
 products:
 - azure
 extensions:
-- services: Compute
-- platforms: dotnet
+  services: Compute
+  platforms: dotnet
 ---
 
 # Manage virtual machine scale sets in availability zones #
