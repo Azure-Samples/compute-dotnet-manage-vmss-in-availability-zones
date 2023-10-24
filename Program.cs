@@ -263,7 +263,8 @@ namespace ManageZonalVirtualMachineScaleSet
                     },
                     Zones =
                     {
-
+                        "AvailabilityZoneId.Zone_1",
+                        "AvailabilityZoneId.Zone_2"
                     }
 
                 };
@@ -337,7 +338,8 @@ namespace ManageZonalVirtualMachineScaleSet
                     },
                     Zones =
                     {
-
+                        "AvailabilityZoneId.Zone_1",
+                        "AvailabilityZoneId.Zone_2"
                     }
 
                 };
