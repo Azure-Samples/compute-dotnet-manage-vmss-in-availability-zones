@@ -261,21 +261,13 @@ namespace ManageZonalVirtualMachineScaleSet
                            }
                         },
                     },
+                    Zones =
+                    {
+
+                    }
 
                 };
-                var vmScaleSet = (await vmScaleSetVMCollection.CreateOrUpdateAsync(WaitUntil.Completed, vmssName1, scaleSetData)).Value;
-                var virtualMachineScaleSet1 = azure.VirtualMachineScaleSets
-                            .WithExistingPrimaryNetworkSubnet(network, "subnet1")
-                            .WithExistingPrimaryInternetFacingLoadBalancer(loadBalancer)
-                            .WithPrimaryInternetFacingLoadBalancerBackends(backends[0])
-                            .WithPrimaryInternetFacingLoadBalancerInboundNatPools(natpools[0])
-                            .WithoutPrimaryInternalLoadBalancer()
-                            .WithPopularLinuxImage(KnownLinuxVirtualMachineImage.UbuntuServer16_04_Lts)
-                            .WithRootUsername(userName)
-                            .WithRootPassword(password)
-                            .WithAvailabilityZone(AvailabilityZoneId.Zone_1)
-                            .WithAvailabilityZone(AvailabilityZoneId.Zone_2)
-                            .Create();
+                var vmScaleSet1 = (await vmScaleSetVMCollection.CreateOrUpdateAsync(WaitUntil.Completed, vmssName1, scaleSetData)).Value;
 
                 Utilities.Log("Created first zone redundant virtual machine scale set");
 
@@ -286,23 +278,70 @@ namespace ManageZonalVirtualMachineScaleSet
 
                 // HTTPS goes to this virtual machine scale set
                 //
-                var virtualMachineScaleSet2 = azure.VirtualMachineScaleSets
-                        .Define(vmssName2)
-                            .WithRegion(region)
-                            .WithExistingResourceGroup(resourceGroup)
-                            .WithSku(VirtualMachineScaleSetSkuTypes.StandardD3v2)
-                            .WithExistingPrimaryNetworkSubnet(network, "subnet1")
-                            .WithExistingPrimaryInternetFacingLoadBalancer(loadBalancer)
-                            .WithPrimaryInternetFacingLoadBalancerBackends(backends[1])
-                            .WithPrimaryInternetFacingLoadBalancerInboundNatPools(natpools[1])
-                            .WithoutPrimaryInternalLoadBalancer()
-                            .WithPopularLinuxImage(KnownLinuxVirtualMachineImage.UbuntuServer16_04_Lts)
-                            .WithRootUsername(userName)
-                            .WithRootPassword(password)
-                            .WithAvailabilityZone(AvailabilityZoneId.Zone_1)
-                            .WithAvailabilityZone(AvailabilityZoneId.Zone_2)
-                            .Create();
+                var scaleSet2Data = new VirtualMachineScaleSetData(region)
+                {
+                    Sku = new ComputeSku()
+                    {
+                        Tier = "StandardD3v2"
+                    },
+                    VirtualMachineProfile = new VirtualMachineScaleSetVmProfile()
+                    {
+                        StorageProfile = new VirtualMachineScaleSetStorageProfile()
+                        {
+                            ImageReference = new ImageReference()
+                            {
+                                Publisher = "Canonical",
+                                Offer = "UbuntuServer",
+                                Sku = "16.04-LTS",
+                                Version = "latest"
+                            }
+                        },
+                        NetworkProfile = new VirtualMachineScaleSetNetworkProfile()
+                        {
+                            NetworkInterfaceConfigurations =
+                           {
+                               new VirtualMachineScaleSetNetworkConfiguration(vmssNetworkConfigurationName)
+                               {
+                                   IPConfigurations =
+                                   {
+                                       new VirtualMachineScaleSetIPConfiguration(ipConfigurationName)
+                                       {
+                                           LoadBalancerInboundNatPools =
+                                           {
+                                               new Azure.ResourceManager.Resources.Models.WritableSubResource()
+                                               {
+                                                   Id = new ResourceIdentifier(natpools[1])
+                                               },
+                                           },
+                                           ApplicationGatewayBackendAddressPools =
+                                           {
+                                               new Azure.ResourceManager.Resources.Models.WritableSubResource()
+                                               {
+                                                   Id = new ResourceIdentifier(backends[1])
+                                               },
+                                           },
+                                           LoadBalancerBackendAddressPools =
+                                           {
+                                               new Azure.ResourceManager.Resources.Models.WritableSubResource()
+                                               {
+                                                   Id = new ResourceIdentifier(loadBalancer.Data.Name)
+                                               }
+                                           },
+                                           SubnetId = subnetResource.Id,
+                                           Primary = true,
+                                       }
+                                   }
+                               }
+                           }
+                        },
+                    },
+                    Zones =
+                    {
 
+                    }
+
+                };
+                var vmScaleSet2 = (await vmScaleSetVMCollection.CreateOrUpdateAsync(WaitUntil.Completed, vmssName2, scaleSet2Data)).Value;
                 Utilities.Log("Created second zone redundant virtual machine scale set");
             }
             finally
@@ -310,7 +349,7 @@ namespace ManageZonalVirtualMachineScaleSet
                 try
                 {
                     Utilities.Log("Deleting Resource Group: " + rgName);
-                    azure.ResourceGroups.DeleteByName(rgName);
+                    await resourceGroup.DeleteAsync(WaitUntil.Completed);
                     Utilities.Log("Deleted Resource Group: " + rgName);
                 }
                 catch (NullReferenceException)
