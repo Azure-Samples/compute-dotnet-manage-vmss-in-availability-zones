@@ -1,17 +1,16 @@
 ﻿// Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License. See License.txt in the project root for license information.
 
-using Microsoft.Azure.Management.Compute.Fluent;
-using Microsoft.Azure.Management.Fluent;
-using Microsoft.Azure.Management.Network.Fluent.Models;
-using Microsoft.Azure.Management.ResourceManager.Fluent;
-using Microsoft.Azure.Management.ResourceManager.Fluent.Core;
-using Microsoft.Azure.Management.Samples.Common;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using Azure;
+using Azure.Core;
+using Azure.Identity;
+using Azure.ResourceManager;
+using Azure.ResourceManager.Compute;
+using Azure.ResourceManager.Compute.Models;
+using Azure.ResourceManager.Network;
+using Azure.ResourceManager.Network.Models;
+using Azure.ResourceManager.Resources;
+using Azure.ResourceManager.Samples.Common;
 
 namespace ManageZonalVirtualMachineScaleSet
 {
@@ -26,9 +25,9 @@ namespace ManageZonalVirtualMachineScaleSet
          *  - Create two zone redundant virtual machine scale set each associated with one backend pool
          *  - Update the virtual machine scale set by appending new zone.
          */
-        public static void RunSample(IAzure azure)
+        public static async Task RunSample(ArmClient client)
         {
-            var region = Region.USEast2;
+            var region = AzureLocation.EastUS;
             var rgName = Utilities.CreateRandomName("rgCOMV");
             var loadBalancerName = Utilities.CreateRandomName("extlb");
             var publicIPName = "pip-" + loadBalancerName;
@@ -39,109 +38,161 @@ namespace ManageZonalVirtualMachineScaleSet
             var natPoolName2 = loadBalancerName + "-INP2";
             var vmssName1 = Utilities.CreateRandomName("vmss1");
             var vmssName2 = Utilities.CreateRandomName("vmss2");
+            var domainNameLabel = Utilities.CreateRandomName("domain");
+            var vmssNetworkConfigurationName = Utilities.CreateRandomName("networkConfiguration");
+            var ipConfigurationName = Utilities.CreateRandomName("ipconfigruation");
             var userName = Utilities.CreateUsername();
             var password = Utilities.CreatePassword();
+            var lro = await client.GetDefaultSubscription().GetResourceGroups().CreateOrUpdateAsync(Azure.WaitUntil.Completed, rgName, new ResourceGroupData(AzureLocation.EastUS));
+            var resourceGroup = lro.Value;
 
             try
             {
-                var resourceGroup = azure.ResourceGroups
-                    .Define(rgName)
-                    .WithRegion(region)
-                    .Create();
-
-
                 //=============================================================
                 // Create a zone resilient PublicIP address
 
                 Utilities.Log("Creating a zone resilient public ip address");
 
-                var publicIPAddress = azure.PublicIPAddresses
-                        .Define(publicIPName)
-                            .WithRegion(region)
-                            .WithExistingResourceGroup(resourceGroup)
-                            .WithLeafDomainLabel(publicIPName)
-                            // Optionals
-                            .WithStaticIP()
-                            .WithSku(PublicIPSkuType.Standard)
-                            // Create PublicIP
-                            .Create();
-
-                Utilities.Log("Created a zone resilient public ip address: " + publicIPAddress.Id);
+                var publicIpAddressCollection = resourceGroup.GetPublicIPAddresses();
+                var publicIPAddressData = new PublicIPAddressData()
+                {
+                    Location = region,
+                    Tags = { { "key", "value" } },
+                    Sku = new PublicIPAddressSku()
+                    {
+                        Tier = "Standard"
+                    }
+                };
+                var publicIpAddress = (await publicIpAddressCollection.CreateOrUpdateAsync(Azure.WaitUntil.Completed, publicIPName, publicIPAddressData)).Value;
+                Utilities.Log("Created a zone resilient public ip address: " + publicIpAddress.Id);
 
                 //=============================================================
                 // Create a zone resilient load balancer
 
                 Utilities.Log("Creating a zone resilient load balancer");
-
-                var loadBalancer = azure.LoadBalancers
-                        .Define(loadBalancerName)
-                            .WithRegion(region)
-                            .WithExistingResourceGroup(resourceGroup)
-
-                            // Add two rules that uses above backend and probe
-                            .DefineLoadBalancingRule("httpRule")
-                                .WithProtocol(TransportProtocol.Tcp)
-                                .FromFrontend(frontendName)
-                                .FromFrontendPort(80)
-                                .ToBackend(backendPoolName1)
-                                .WithProbe("httpProbe")
-                                .Attach()
-                            .DefineLoadBalancingRule("httpsRule")
-                                .WithProtocol(TransportProtocol.Tcp)
-                                .FromFrontend(frontendName)
-                                .FromFrontendPort(443)
-                                .ToBackend(backendPoolName2)
-                                .WithProbe("httpsProbe")
-                                .Attach()
-                            // Add two nat pools to enable direct VMSS connectivity to port SSH and 23
-                            .DefineInboundNatPool(natPoolName1)
-                                .WithProtocol(TransportProtocol.Tcp)
-                                .FromFrontend(frontendName)
-                                .FromFrontendPortRange(5000, 5099)
-                                .ToBackendPort(22)
-                                .Attach()
-                            .DefineInboundNatPool(natPoolName2)
-                                .WithProtocol(TransportProtocol.Tcp)
-                                .FromFrontend(frontendName)
-                                .FromFrontendPortRange(6000, 6099)
-                                .ToBackendPort(23)
-                                .Attach()
-                            // Explicitly define the frontend
-                            .DefinePublicFrontend(frontendName)
-                                .WithExistingPublicIPAddress(publicIPAddress)   // Frontend with PIP means internet-facing load-balancer
-                                .Attach()
-                            // Add two probes one per rule
-                            .DefineHttpProbe("httpProbe")
-                                .WithRequestPath("/")
-                                .Attach()
-                            .DefineHttpProbe("httpsProbe")
-                                .WithRequestPath("/")
-                                .Attach()
-                            .WithSku(LoadBalancerSkuType.Standard)
-                        .Create();
+                var loadBalancerCollection = resourceGroup.GetLoadBalancers();
+                var loadBalancerData = new LoadBalancerData()
+                {
+                    Location = region,
+                    Sku = new LoadBalancerSku()
+                    {
+                        Tier = "Standard"
+                    },
+                    LoadBalancingRules =
+                    {
+                        new LoadBalancingRuleData()
+                        {
+                            Name = "httpRule",
+                            Protocol = LoadBalancingTransportProtocol.Tcp,
+                            FrontendPort = 80,
+                            ProbeId = new ResourceIdentifier("httpProbe"),
+                            BackendAddressPools =
+                            {
+                                new Azure.ResourceManager.Resources.Models.WritableSubResource()
+                                {
+                                    Id = new ResourceIdentifier(backendPoolName1)
+                                }
+                            }
+                        },
+                        new LoadBalancingRuleData()
+                        {
+                            Name= "httpRule",
+                            Protocol= LoadBalancingTransportProtocol.Tcp,
+                            BackendPort = 443,
+                            ProbeId = new ResourceIdentifier("httpProbe"),
+                            BackendAddressPools =
+                            {
+                                new Azure.ResourceManager.Resources.Models.WritableSubResource()
+                                {
+                                    Id = new ResourceIdentifier(backendPoolName2)
+                                }
+                            }
+                        }
+                    },
+                    // Add nat pools to enable direct VM connectivity for
+                    //  SSH to port 22 and TELNET to port 23
+                    InboundNatRules =
+                    {
+                        new InboundNatRuleData()
+                        {
+                            Name = natPoolName1,
+                            Protocol= LoadBalancingTransportProtocol.Tcp,
+                            BackendPort = 22,
+                            FrontendPortRangeStart = 5000,
+                            FrontendPortRangeEnd = 5099,
+                        },
+                        new InboundNatRuleData()
+                        {
+                            Name = natPoolName2,
+                            Protocol= LoadBalancingTransportProtocol.Tcp,
+                            BackendPort = 23,
+                            FrontendPortRangeStart = 6000,
+                            FrontendPortRangeEnd = 6099,
+                        }
+                    },
+                    // Add two probes one per rule
+                    Probes =
+                    {
+                        new ProbeData()
+                        {
+                            RequestPath = "/",
+                            Name = "httpProbe"
+                        },
+                        new ProbeData()
+                        {
+                            RequestPath = "/",
+                            Name = "httpProbe"
+                        }
+                    },
+                    FrontendIPConfigurations =
+                    {
+                        new FrontendIPConfigurationData()
+                        {
+                            PublicIPAddress = new PublicIPAddressData()
+                            {
+                                Location = region,
+                                Tags = { { "key", "value" } },
+                                Sku = new PublicIPAddressSku()
+                                {
+                                    Tier = "Standard"
+                                }
+                            }
+                        }
+                    }
+                };
+                var loadBalancer = (await loadBalancerCollection.CreateOrUpdateAsync(Azure.WaitUntil.Completed, loadBalancerName, loadBalancerData)).Value;
 
                 Utilities.Log("Created a zone resilient load balancer: " + loadBalancer.Id);
 
                 var backends = new List<string>();
-                foreach (var backend in loadBalancer.Backends.Keys)
+                foreach (var backend in loadBalancer.Data.BackendAddressPools)
                 {
-                    backends.Add(backend);
+                    backends.Add(backend.Id);
                 }
                 var natpools = new List<string>();
-                foreach (var natPool in loadBalancer.InboundNatPools.Keys)
+                foreach (var natPool in loadBalancer.Data.InboundNatPools)
                 {
-                    natpools.Add(natPool);
+                    natpools.Add(natPool.Name);
                 }
 
                 Utilities.Log("Creating network for virtual machine scale sets");
 
-                var network = azure.Networks
-                        .Define("vmssvnet")
-                            .WithRegion(region)
-                            .WithExistingResourceGroup(resourceGroup)
-                            .WithAddressSpace("10.0.0.0/28")
-                            .WithSubnet("subnet1", "10.0.0.0/28")
-                            .Create();
+                var networkCollection = resourceGroup.GetVirtualNetworks();
+                var networkData = new VirtualNetworkData()
+                {
+                    Location = region,
+                    AddressPrefixes =
+                    {
+                        "10.0.0.0/28"
+                    }
+                };
+                var networkResource = (await networkCollection.CreateOrUpdateAsync(Azure.WaitUntil.Completed, "vmssvnet", networkData)).Value;
+                var subnetCollection = networkResource.GetSubnets();
+                var subnetData = new SubnetData()
+                {
+                    AddressPrefix = "10.0.0.0/28"
+                };
+                var subnetResource = (await subnetCollection.CreateOrUpdateAsync(WaitUntil.Completed, "subnet1", subnetData)).Value;
 
                 Utilities.Log("Created network for virtual machine scale sets");
 
@@ -152,11 +203,68 @@ namespace ManageZonalVirtualMachineScaleSet
 
                 // HTTP goes to this virtual machine scale set
                 //
+                var vmScaleSetVMCollection = resourceGroup.GetVirtualMachineScaleSets();
+                var scaleSetData = new VirtualMachineScaleSetData(region)
+                {
+                    Sku = new ComputeSku()
+                    {
+                        Tier = "StandardD3v2"
+                    },
+                    VirtualMachineProfile = new VirtualMachineScaleSetVmProfile()
+                    {
+                        StorageProfile = new VirtualMachineScaleSetStorageProfile()
+                        {
+                            ImageReference = new ImageReference()
+                            {
+                                Publisher = "Canonical",
+                                Offer = "UbuntuServer",
+                                Sku = "16.04-LTS",
+                                Version = "latest"
+                            }
+                        },
+                        NetworkProfile = new VirtualMachineScaleSetNetworkProfile()
+                        {
+                            NetworkInterfaceConfigurations =
+                           {
+                               new VirtualMachineScaleSetNetworkConfiguration(vmssNetworkConfigurationName)
+                               {
+                                   IPConfigurations =
+                                   {
+                                       new VirtualMachineScaleSetIPConfiguration(ipConfigurationName)
+                                       {
+                                           LoadBalancerInboundNatPools =
+                                           {
+                                               new Azure.ResourceManager.Resources.Models.WritableSubResource()
+                                               {
+                                                   Id = new ResourceIdentifier(natpools[0])
+                                               },
+                                           },
+                                           ApplicationGatewayBackendAddressPools =
+                                           {
+                                               new Azure.ResourceManager.Resources.Models.WritableSubResource()
+                                               {
+                                                   Id = new ResourceIdentifier(backends[0])
+                                               },
+                                           },
+                                           LoadBalancerBackendAddressPools =
+                                           {
+                                               new Azure.ResourceManager.Resources.Models.WritableSubResource()
+                                               {
+                                                   Id = new ResourceIdentifier(loadBalancer.Data.Name)
+                                               }
+                                           },
+                                           SubnetId = subnetResource.Id,
+                                           Primary = true,
+                                       }
+                                   }
+                               }
+                           }
+                        },
+                    },
+
+                };
+                var vmScaleSet = (await vmScaleSetVMCollection.CreateOrUpdateAsync(WaitUntil.Completed, vmssName1, scaleSetData)).Value;
                 var virtualMachineScaleSet1 = azure.VirtualMachineScaleSets
-                        .Define(vmssName1)
-                            .WithRegion(region)
-                            .WithExistingResourceGroup(resourceGroup)
-                            .WithSku(VirtualMachineScaleSetSkuTypes.StandardD3v2)
                             .WithExistingPrimaryNetworkSubnet(network, "subnet1")
                             .WithExistingPrimaryInternetFacingLoadBalancer(loadBalancer)
                             .WithPrimaryInternetFacingLoadBalancerBackends(backends[0])
@@ -216,24 +324,23 @@ namespace ManageZonalVirtualMachineScaleSet
             }
         }
 
-        public static void Main(string[] args)
+        public static async Task Main(string[] args)
         {
             try
             {
                 //=============================================================
                 // Authenticate
-                var credentials = SdkContext.AzureCredentialsFactory.FromFile(Environment.GetEnvironmentVariable("AZURE_AUTH_LOCATION"));
-
-                var azure = Azure
-                    .Configure()
-                    .WithLogLevel(HttpLoggingDelegatingHandler.Level.Basic)
-                    .Authenticate(credentials)
-                    .WithDefaultSubscription();
+                var clientId = Environment.GetEnvironmentVariable("CLIENT_ID");
+                var clientSecret = Environment.GetEnvironmentVariable("CLIENT_SECRET");
+                var tenantId = Environment.GetEnvironmentVariable("TENANT_ID");
+                var subscription = Environment.GetEnvironmentVariable("SUBSCRIPTION_ID");
+                ClientSecretCredential credential = new ClientSecretCredential(tenantId, clientId, clientSecret);
+                ArmClient client = new ArmClient(credential, subscription);
 
                 // Print selected subscription
-                Utilities.Log("Selected subscription: " + azure.SubscriptionId);
+                Utilities.Log("Selected subscription: " + client.GetSubscriptions().Id);
 
-                RunSample(azure);
+                await RunSample(client);
             }
             catch (Exception ex)
             {
